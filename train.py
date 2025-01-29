@@ -40,7 +40,7 @@ dataset = CustomDataset(
 )
 
 # データセットの分割
-train_size = int(0.95 * len(dataset))
+train_size = int(0.9 * len(dataset))
 val_size = len(dataset) - train_size
 train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
@@ -52,7 +52,7 @@ device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
 # モデル、損失関数、オプティマイザの初期化
 model = MMM().to(device)
-criterion1 = CustomLoss()
+criterion1 = featureloss()
 criterion2 = FocalMultiLabelLoss()
 criterion3 = CustomLoss()
 metrics_fn = BinaryFBetaScore(beta=0.5).to(device)
@@ -140,25 +140,23 @@ for step_ind in range(start_ind,len(steps)):
 
         for i, data in enumerate(train_loader):
             inputs_rgb, inputs_depth, inputs_depth2, targets, edge_targets = data
-            inputs_rgb, inputs_depth, inputs_depth2, targets = (
+            inputs_rgb, inputs_depth, inputs_depth2, targets,edge_targets = (
                 inputs_rgb.to(device), inputs_depth.to(device),
-                inputs_depth2.to(device), targets.to(device)
+                inputs_depth2.to(device), targets.to(device),edge_targets.to(device)
             )
 
-            if step['name'] == "Edge Detection":
-                edge_targets = edge_targets.to(device)
 
             optimizer.zero_grad()
             if step['name'] == "mirror detection":
-                outputs4 = model(inputs_rgb, inputs_depth, inputs_depth2, mode_flag=step['mode_flag'])
-                #outputs1, outputs2, outputs3, outputs4 = outputs
-                loss = step['criterion'](outputs4, targets)
+                outputs = model(inputs_rgb, inputs_depth, inputs_depth2, mode_flag=step['mode_flag'])
+                outputs1, outputs2, outputs3, outputs4 = outputs
+                loss = step['criterion'](outputs1, outputs2, outputs3, outputs4, targets, edge_targets)
             elif step['name'] == "Edge Detection":
                 outputs4 = model(inputs_rgb, inputs_depth, inputs_depth2, mode_flag=step['mode_flag'])
                 loss = step['criterion'](outputs4, edge_targets)
             else:
                 outputs4 = model(inputs_rgb, inputs_depth, inputs_depth2, mode_flag=step['mode_flag'])
-                loss = step['criterion'](outputs4, targets)
+                loss = step['criterion'](outputs4, targets, edge_targets)
 
             loss.backward()
             optimizer.step()
@@ -177,34 +175,31 @@ for step_ind in range(start_ind,len(steps)):
         with torch.no_grad():
             for batch_idx, data in enumerate(val_loader):
                 inputs_rgb, inputs_depth, inputs_depth2, targets, edge_targets = data
-                inputs_rgb, inputs_depth, inputs_depth2, targets = (
+                inputs_rgb, inputs_depth, inputs_depth2, targets,edge_targets = (
                     inputs_rgb.to(device), inputs_depth.to(device),
-                    inputs_depth2.to(device), targets.to(device)
+                    inputs_depth2.to(device), targets.to(device),edge_targets.to(device)
                 )
-                if step['name'] == "Edge Detection":
-                    edge_targets = edge_targets.to(device)
-
                 if step['name'] == "mirror detection":
-                    outputs4 = model(inputs_rgb, inputs_depth, inputs_depth2, mode_flag=step['mode_flag'])
-                    #outputs1, outputs2, outputs3, outputs4 = outputs
-                    loss = step['criterion'](outputs4, targets)
+                    outputs = model(inputs_rgb, inputs_depth, inputs_depth2, mode_flag=step['mode_flag'])
+                    outputs1, outputs2, outputs3, outputs4 = outputs
+                    loss = step['criterion'](outputs1, outputs2, outputs3, outputs4, targets, edge_targets)
                 elif step['name'] == "Edge Detection":
                     outputs4 = model(inputs_rgb, inputs_depth, inputs_depth2, mode_flag=step['mode_flag'])
                     loss = step['criterion'](outputs4, edge_targets)
                 else:
                     outputs4 = model(inputs_rgb, inputs_depth, inputs_depth2, mode_flag=step['mode_flag'])
-                    loss = step['criterion'](outputs4, targets)
+                    loss = step['criterion'](outputs4, targets, edge_targets)
 
 
                 valing_loss += loss.item()
                 val_score += metrics_fn(torch.sigmoid(outputs4), (targets if step['name'] != "Edge Detection" else edge_targets).int()).item()
 
-                if batch_idx == 0:
-                    save_path = os.path.join(output_dir, 'val_images', step['save_image_name'])
+                if 0<= batch_idx <= 10:
+                    save_path = os.path.join(output_dir, 'val_images', step['save_image_name'], f'{batch_idx}')
                     if step['name'] == "Edge Detection":
                         save_epoch_edge_grid(torch.sigmoid(outputs4), inputs_rgb, edge_targets, save_path)
-                    #elif step['name'] == "mirror detection":
-                        #save_epoch_images_grid([outputs1, outputs2, outputs3, outputs4], inputs_rgb, targets, save_path)
+                    elif step['name'] == "mirror detection":
+                        save_epoch_images_grid([outputs1, outputs2, outputs3, outputs4], inputs_rgb, targets, save_path)
                     else:     
                         save_epoch_edge_grid(torch.sigmoid(outputs4), inputs_rgb, targets, save_path)                        
                        

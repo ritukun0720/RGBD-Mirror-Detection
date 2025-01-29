@@ -335,19 +335,18 @@ class DiscriminativeSubNetwork(nn.Module):
         db4 = self.dec_db4(cat4)
 
 
-        #x_up1_1ch = self.dec_fin1_out(db1)
-        #x_up2_1ch = self.dec_fin2_out(db2)
-        #x_up3_1ch = self.dec_fin3_out(db3)
+        x_up1_1ch = self.dec_fin1_out(db1)
+        x_up2_1ch = self.dec_fin2_out(db2)
+        x_up3_1ch = self.dec_fin3_out(db3)
         x_up4_1ch = self.dec_fin4_out(db4)
 
-        #x_up1_1ch = F.interpolate(x_up1_1ch, size=x.size()[2:], mode='bilinear', align_corners=True) 
-        #x_up2_1ch = F.interpolate(x_up2_1ch, size=x.size()[2:], mode='bilinear', align_corners=True) 
-        #x_up3_1ch = F.interpolate(x_up3_1ch, size=x.size()[2:], mode='bilinear', align_corners=True) 
+        x_up1_1ch = F.interpolate(x_up1_1ch, size=x.size()[2:], mode='bilinear', align_corners=True) 
+        x_up2_1ch = F.interpolate(x_up2_1ch, size=x.size()[2:], mode='bilinear', align_corners=True) 
+        x_up3_1ch = F.interpolate(x_up3_1ch, size=x.size()[2:], mode='bilinear', align_corners=True) 
  
 
         #pdb.set_trace()
-        #return x_up1_1ch, x_up2_1ch, x_up3_1ch, x_up4_1ch,db1
-        return  x_up4_1ch,db1
+        return x_up1_1ch, x_up2_1ch, x_up3_1ch, x_up4_1ch,db1
 
 
 
@@ -357,7 +356,7 @@ class MMM(nn.Module):
         super(MMM, self).__init__()
         self.DiscriminativeSubNetwork = DiscriminativeSubNetwork()
         self.EdgeDetectionModel = EdgeDetectionModel()
-        self.refinement_net = nn.Conv2d(7, 1, 1, 1, 0)
+        self.refinement_net = nn.Conv2d(10, 1, 1, 1, 0)
 
     def forward(self, x, y, z, mode_flag):
         """
@@ -371,24 +370,24 @@ class MMM(nn.Module):
         input_cat = torch.cat([x, y, z], dim=1)
 
         # Discriminative SubNetwork
-        #features1, features2, features3, features4, db1 = self.DiscriminativeSubNetwork(input_cat)
-        features4, db1 = self.DiscriminativeSubNetwork(input_cat)
+        features1, features2, features3, features4, db1 = self.DiscriminativeSubNetwork(input_cat)
+
 
         if mode_flag == 1:
             # Return features for mirror detection
-            #return features1, features2, features3, features4
-            return features4
+            return features1, features2, features3, features4
         # Edge Detection
         edge_out = self.EdgeDetectionModel(x, db1)
 
         if mode_flag == 2:
-            # Return edge detection output
             return edge_out
 
         # Refinement
         final_out = self.refinement_net(
-            #torch.cat((features1, features2, features3, features4, edge_out, input_cat), dim=1)
-            torch.cat((features4, edge_out, input_cat), dim=1)
-        )
+            torch.cat((features1, features2, features3, features4, edge_out, input_cat), dim=1)
 
-        return final_out
+        )
+        if mode_flag == 3:
+            return final_out
+        else:
+            return torch.sigmoid(final_out)

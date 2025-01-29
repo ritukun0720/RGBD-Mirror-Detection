@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 from torchvision.transforms.functional import resize
-from Discriminative2 import MMM
+from Discriminative import MMM
 from metrics import get_maxFscore_and_threshold
 import pdb
 import time
@@ -14,7 +14,7 @@ import time
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 # Load the trained model
-model_path = '/data1/kurohiji/RGBD/dis/0124/trained_step3.pth'  # Path to the trained model
+model_path = '/data1/kurohiji/dis/0129/trained_step3.pth'  # Path to the trained model
 model = MMM().to(device)
 model.load_state_dict(torch.load(model_path, map_location=device))
 model.eval()
@@ -28,7 +28,7 @@ print(params)  # 121898
 rgb_dir = '/data1/kurohiji/RGBD/CVPR2021_PDNet/data/RGBD-Mirror/test/image'
 depth_dir = '/data1/kurohiji/RGBD/CVPR2021_PDNet/data/RGBD-Mirror/test/depth_normalized'
 depth2_dir = '/data1/kurohiji/RGBD/CVPR2021_PDNet/data/RGBD-Mirror/test/depth2'
-output_dir = 'output12/0124'
+output_dir = 'output12/0129'
 gt_dir = '/data1/kurohiji/RGBD/CVPR2021_PDNet/data/RGBD-Mirror/test/mask_single'
 
 # 追加の出力ディレクトリ
@@ -70,7 +70,7 @@ for rgb_image_name, depth_image_name, depth2_image_name, gt_image_name in zip(rg
     # Perform inference
     start_each = time.time()
     with torch.no_grad():
-        outputs_pm = model(rgb_tensor, depth_tensor, depth2_tensor)
+        outputs_pm = model(rgb_tensor, depth_tensor, depth2_tensor,mode_flag=4)
     time_each = time.time() - start_each
     time_list.append(time_each)
     # Convert output to numpy array
@@ -100,7 +100,7 @@ for rgb_image_name, depth_image_name, depth2_image_name, gt_image_name in zip(rg
     plt.close(fig)
 
     # ----- 閾値処理後のバイナリマスクを保存 -----
-    binary_mask = torch.sigmoid(binary_mask)
+
     binary_mask = (output_mask_resized >= thres).astype(np.uint8) * 255
     binary_pil = Image.fromarray(binary_mask)
     bin_mask_path = os.path.join(output_dir_bin, f'{base_name}_binary.png')

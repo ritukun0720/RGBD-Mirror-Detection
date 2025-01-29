@@ -9,16 +9,57 @@ def iou_loss(preds, targets, smooth=1e-6):
     iou = (intersection + smooth) / (union + smooth)
     return 1 - iou.mean()
 
-def edge_loss(preds, targets):
-    kernel = torch.tensor([[[[1, 1, 1],
-                             [1, -9, 1],
-                             [1, 1, 1]]]], dtype=torch.float32).to(preds.device)
-    preds_edge = F.conv2d(preds, kernel, padding=1)
-    targets_edge = F.conv2d(targets, kernel, padding=1)
-    return F.l1_loss(preds_edge, targets_edge)
+def sobel_filter():
+    """Sobelフィルタを生成 (X方向とY方向)"""
+    kernel_x = torch.tensor([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=torch.float32)
+    kernel_y = torch.tensor([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=torch.float32)
+    kernel = torch.stack([kernel_x, kernel_y]).unsqueeze(1)  # (2, 1, 3, 3)
+    return kernel
+
+
+def generate_edge_map(mask):
+    """
+    GPU 上でエッジマップを生成 (Sobelフィルタを使用)
+    """
+    if len(mask.shape) == 5:  # 形状が [B, C, 1, H, W] の場合
+        mask = mask.squeeze(2)
+
+    device = mask.device
+    kernel = sobel_filter().to(device)
+
+    edge_x = F.conv2d(mask, kernel[0:1], padding=1)
+    edge_y = F.conv2d(mask, kernel[1:2], padding=1)
+
+    # エッジ強度の計算 (負値を防ぐ)
+    edge = torch.sqrt(torch.clamp(edge_x**2 + edge_y**2, min=1e-8))
+
+    # 正規化 (ゼロ割り防止)
+    edge = edge / (edge.max() + 1e-8)
+
+    return edge
+
+
+def edge_loss(prediction, gt_edge, patch_size=8):
+
+    # エッジマップを生成
+    pred_edge = generate_edge_map(prediction)
+
+
+    # パッチに分割 (unfoldを使用)
+    pred_patches = pred_edge.unfold(2, patch_size, patch_size).unfold(3, patch_size, patch_size)
+    gt_patches = gt_edge.unfold(2, patch_size, patch_size).unfold(3, patch_size, patch_size)
+
+    # 値を範囲内に制限
+    pred_patches = torch.clamp(pred_patches, 0, 1)
+    gt_patches = torch.clamp(gt_patches, 0, 1)
+
+
+    total_loss = torch.abs(pred_patches - gt_patches).mean()
+
+    return total_loss
 
 class FocalMultiLabelLoss(nn.Module):
-    def __init__(self, gamma=5.0, pos_weight=5000.0):
+    def __init__(self, gamma=2.0, pos_weight=1000.0):
         """
         Args:
             gamma (float): フォーカスパラメータ。
@@ -63,11 +104,11 @@ class CustomLoss(nn.Module):
         self.iou = iou_loss
         self.edge = edge_loss
 
-    def forward(self, preds, targets):
+    def forward(self, preds, targets,edge_targets):
         preds_sig = torch.sigmoid(preds)  # シグモイドを適用
         f_loss = self.focal_loss(preds, targets).mean()
         i_loss = self.iou(preds_sig, targets)
-        e_loss = self.edge(preds_sig, targets)
+        e_loss = self.edge(preds_sig, edge_targets)
         return f_loss + i_loss + 10 * e_loss
 
 
@@ -78,11 +119,11 @@ class featureloss(nn.Module):
 
 
 
-    def forward(self, features1,features2,features3,features4, targets):
-        loss_dm1 = self.custom_loss(features1, targets)
-        loss_dm2 = self.custom_loss(features2, targets)
-        loss_dm3 = self.custom_loss(features3, targets)
-        loss_dm4 = self.custom_loss(features4, targets)
+    def forward(self, features1,features2,features3,features4, targets,edge_targets):
+        loss_dm1 = self.custom_loss(features1, targets,edge_targets)
+        loss_dm2 = self.custom_loss(features2, targets,edge_targets)
+        loss_dm3 = self.custom_loss(features3, targets,edge_targets)
+        loss_dm4 = self.custom_loss(features4, targets,edge_targets)
 
         return loss_dm1 + 2 * loss_dm2 + 3 * loss_dm3 + 4 * loss_dm4
 
