@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader, random_split
 from dataset import CustomDataset, rgb_transform, depth_transform, depth2_transform, mask_transform
 from losses import featureloss, FocalMultiLabelLoss, CustomLoss
 from early_stopping import EarlyStopping
-from Discriminative import MMM
+from model import MMM
 import matplotlib.pyplot as plt
 import numpy as np
 import argparse
@@ -58,11 +58,11 @@ criterion3 = CustomLoss()
 metrics_fn = BinaryFBetaScore(beta=0.5).to(device)
 steps = [
     {
-        "name": "mirror detection",
+        "name": "DiscriminativeSubNet",
         "mode": {
-            "refinement_net": False,
-            "EdgeDetectionModel": False,
-            "DiscriminativeSubNetwork": True
+            "RefinementNet": False,
+            "EdgeDetectionNet": False,
+            "DiscriminativeSubNet": True
         },
         "criterion": criterion1,
         "optimizer": optim.SGD(
@@ -71,15 +71,15 @@ steps = [
         ),
         "early_stopping_path": os.path.join(output_dir, 'trained_step1.pth'),
         "mode_flag": 1,
-        "save_image_name": 'UNet.png',
+        "save_image_name": 'DiscriminativeSubNet.png',
         "previous_checkpoint": None
     },
     {
-        "name": "Edge Detection",
+        "name": "EdgeDetectionNet",
         "mode": {
-            "refinement_net": False,
-            "EdgeDetectionModel": True,
-            "DiscriminativeSubNetwork": False
+            "RefinementNet": False,
+            "EdgeDetectionNet": True,
+            "DiscriminativeSubNet": False
         },
         "criterion": criterion2,
         "optimizer": optim.SGD(
@@ -88,15 +88,15 @@ steps = [
         ),
         "early_stopping_path": os.path.join(output_dir, 'trained_step2.pth'),
         "mode_flag": 2,
-        "save_image_name": 'edge.png',
+        "save_image_name": 'EdgeDetectionNet.png',
         "previous_checkpoint": os.path.join(output_dir, 'trained_step1.pth')
     },
     {
-        "name": "Refinement",
+        "name": "RefinementNet",
         "mode": {
-            "refinement_net": True,
-            "EdgeDetectionModel": False,
-            "DiscriminativeSubNetwork": False
+            "RefinementNet": True,
+            "EdgeDetectionNet": False,
+            "DiscriminativeSubNet": False
         },
         "criterion": criterion3,
         "optimizer": optim.SGD(
@@ -105,7 +105,7 @@ steps = [
         ),
         "early_stopping_path": os.path.join(output_dir, 'trained_step3.pth'),
         "mode_flag": 3,
-        "save_image_name": 'fin.png',
+        "save_image_name": 'RefinementNet.png',
         "previous_checkpoint": os.path.join(output_dir, 'trained_step2.pth')
     }
 ]
@@ -139,7 +139,7 @@ for step_ind in range(start_ind,len(steps)):
         running_loss, train_score = 0.0, 0.0
 
         for i, data in enumerate(train_loader):
-            inputs_rgb, inputs_depth, inputs_depth2, targets, edge_targets = data
+            inputs_rgb, inputs_depth, inputs_depth2, targets, edge_targets,filename = data
             inputs_rgb, inputs_depth, inputs_depth2, targets,edge_targets = (
                 inputs_rgb.to(device), inputs_depth.to(device),
                 inputs_depth2.to(device), targets.to(device),edge_targets.to(device)
@@ -147,11 +147,11 @@ for step_ind in range(start_ind,len(steps)):
 
 
             optimizer.zero_grad()
-            if step['name'] == "mirror detection":
+            if step['name'] == "DiscriminativeSubNet":
                 outputs = model(inputs_rgb, inputs_depth, inputs_depth2, mode_flag=step['mode_flag'])
                 outputs1, outputs2, outputs3, outputs4 = outputs
                 loss = step['criterion'](outputs1, outputs2, outputs3, outputs4, targets, edge_targets)
-            elif step['name'] == "Edge Detection":
+            elif step['name'] == "EdgeDetectionNet":
                 outputs4 = model(inputs_rgb, inputs_depth, inputs_depth2, mode_flag=step['mode_flag'])
                 loss = step['criterion'](outputs4, edge_targets)
             else:
@@ -174,35 +174,42 @@ for step_ind in range(start_ind,len(steps)):
         valing_loss, val_score = 0.0, 0.0
         with torch.no_grad():
             for batch_idx, data in enumerate(val_loader):
-                inputs_rgb, inputs_depth, inputs_depth2, targets, edge_targets = data
-                inputs_rgb, inputs_depth, inputs_depth2, targets,edge_targets = (
+                inputs_rgb, inputs_depth, inputs_depth2, targets, edge_targets, filenames = data  # ファイル名を取得
+                inputs_rgb, inputs_depth, inputs_depth2, targets, edge_targets = (
                     inputs_rgb.to(device), inputs_depth.to(device),
-                    inputs_depth2.to(device), targets.to(device),edge_targets.to(device)
+                    inputs_depth2.to(device), targets.to(device), edge_targets.to(device)
                 )
-                if step['name'] == "mirror detection":
+
+                if step['name'] == "DiscriminativeSubNet":
                     outputs = model(inputs_rgb, inputs_depth, inputs_depth2, mode_flag=step['mode_flag'])
                     outputs1, outputs2, outputs3, outputs4 = outputs
                     loss = step['criterion'](outputs1, outputs2, outputs3, outputs4, targets, edge_targets)
-                elif step['name'] == "Edge Detection":
+                elif step['name'] == "EdgeDetectionNet":
                     outputs4 = model(inputs_rgb, inputs_depth, inputs_depth2, mode_flag=step['mode_flag'])
                     loss = step['criterion'](outputs4, edge_targets)
                 else:
                     outputs4 = model(inputs_rgb, inputs_depth, inputs_depth2, mode_flag=step['mode_flag'])
                     loss = step['criterion'](outputs4, targets, edge_targets)
 
-
                 valing_loss += loss.item()
                 val_score += metrics_fn(torch.sigmoid(outputs4), (targets if step['name'] != "Edge Detection" else edge_targets).int()).item()
 
-                if 0<= batch_idx <= 10:
-                    save_path = os.path.join(output_dir, 'val_images', step['save_image_name'], f'{batch_idx}')
-                    if step['name'] == "Edge Detection":
-                        save_epoch_edge_grid(torch.sigmoid(outputs4), inputs_rgb, edge_targets, save_path)
-                    elif step['name'] == "mirror detection":
-                        save_epoch_images_grid([outputs1, outputs2, outputs3, outputs4], inputs_rgb, targets, save_path)
-                    else:     
-                        save_epoch_edge_grid(torch.sigmoid(outputs4), inputs_rgb, targets, save_path)                        
-                       
+                if batch_idx == 0:
+                    save_path = os.path.join(output_dir, 'val_images', step['name'])
+                    os.makedirs(save_path, exist_ok=True)
+                    # **各バッチ内の画像をループ処理**
+                    for i in range(len(filenames)):
+                        filename = os.path.splitext(filenames[i])[0]  # 拡張子を除く
+                        save_filename = os.path.join(save_path, f"{filename}.png")  # 例: image_001.png
+
+                        if step['name'] == "EdgeDetectionNet":
+                            save_epoch_edge_grid(torch.sigmoid(outputs4[i]), inputs_rgb[i], edge_targets[i], save_filename)
+                        elif step['name'] == "DiscriminativeSubNet":
+                            save_epoch_images_grid([outputs1[i], outputs2[i], outputs3[i], outputs4[i]], inputs_rgb[i], targets[i], save_filename)
+                        else:     
+                            save_epoch_edge_grid(torch.sigmoid(outputs4[i]), inputs_rgb[i], targets[i], save_filename)  
+                                    
+                                
         val_loss.append(valing_loss / len(val_loader))
         val_metrics.append(val_score / len(val_loader))
 

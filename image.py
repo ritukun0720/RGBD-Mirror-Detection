@@ -44,9 +44,9 @@ def save_epoch_images_grid(features, inputs_rgb, mask, save_path):
         return tensor.numpy()
 
     # 正規化
-    normalized_rgb = normalize_tensor(inputs_rgb[0].permute(1, 2, 0))  # RGB画像
-    normalized_mask = normalize_tensor(mask[0].squeeze())  # マスク画像を2次元に変換
-    normalized_features = [normalize_tensor(f[0].squeeze()) for f in features]  # 特徴マップを2次元に変換
+    normalized_rgb = normalize_tensor(inputs_rgb.permute(1, 2, 0))  # RGB画像
+    normalized_mask = normalize_tensor(mask.squeeze())  # マスク画像を2次元に変換
+    normalized_features = [normalize_tensor(f.squeeze()) for f in features]  # 特徴マップを2次元に変換
 
     # レイアウトを設定
     fig, axes = plt.subplots(2, 4, figsize=(16, 8))  # 2行×4列のグリッド
@@ -96,11 +96,11 @@ def save_epoch_edge_grid(features, inputs_rgb, mask, save_path):
         return tensor
 
     # Normalize inputs
-    normalized_rgb = normalize_tensor(inputs_rgb[0].permute(1, 2, 0)).numpy()
-    normalized_mask = normalize_tensor(mask[0].squeeze()).numpy()
+    normalized_rgb = normalize_tensor(inputs_rgb.permute(1, 2, 0)).numpy()
+    normalized_mask = normalize_tensor(mask.squeeze()).numpy()
 
     # Use features without normalization
-    raw_features = features[0].squeeze().cpu().detach().numpy()
+    raw_features = features.squeeze().cpu().detach().numpy()
 
     # Create plot
     fig, axes = plt.subplots(1, 3, figsize=(16, 8))
