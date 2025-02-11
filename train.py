@@ -24,7 +24,7 @@ os.makedirs(output_dir, exist_ok=True)
 
 # データセットのロード
 rgb_dir = '/data1/kurohiji/RGBD/CVPR2021_PDNet/data/RGBD-Mirror/train/image'
-depth_dir = '/data1/kurohiji/RGBD/CVPR2021_PDNet/data/RGBD-Mirror/train/depth_normalized'
+depth_dir = '/data1/kurohiji/RGBD/CVPR2021_PDNet/data/RGBD-Mirror/train/depth'
 depth2_dir = '/data1/kurohiji/RGBD/CVPR2021_PDNet/data/RGBD-Mirror/train/depth2'
 mask_dir = '/data1/kurohiji/RGBD/CVPR2021_PDNet/data/RGBD-Mirror/train/mask_single'
 
@@ -44,8 +44,8 @@ train_size = int(0.9 * len(dataset))
 val_size = len(dataset) - train_size
 train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
-train_loader = DataLoader(train_dataset, batch_size=18, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=18, shuffle=False)
+train_loader = DataLoader(train_dataset, batch_size=12, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=12, shuffle=False)
 
 # デバイスの設定
 device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
@@ -140,6 +140,7 @@ for step_ind in range(start_ind,len(steps)):
 
         for i, data in enumerate(train_loader):
             inputs_rgb, inputs_depth, inputs_depth2, targets, edge_targets,filename = data
+            #pdb.set_trace()
             inputs_rgb, inputs_depth, inputs_depth2, targets,edge_targets = (
                 inputs_rgb.to(device), inputs_depth.to(device),
                 inputs_depth2.to(device), targets.to(device),edge_targets.to(device)
